@@ -1,4 +1,4 @@
-# AI Based Sentiment Review - Flask + Firebase Realtime Database 
+# SESI 8 - AI Based Sentiment Review - Flask + Firebase Realtime Database 
 # (By Febriyeni Susi - 1076012614908)
 
 Project web Artificial Intelligence sederhana :
