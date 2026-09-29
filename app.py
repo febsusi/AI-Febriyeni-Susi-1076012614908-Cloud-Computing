@@ -1,39 +1,28 @@
 import os
 from datetime import datetime, timezone
-from functools import wraps
-from dotenv import load_dotenv
-
-load_dotenv()
 
 import firebase_admin
-import requests
 from firebase_admin import credentials, db
-from flask import (Flask, jsonify, redirect, render_template, request, session, url_for)
+from flask import Flask, jsonify, redirect, render_template, request, url_for
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
 app = Flask(__name__)
 
-app.secret_key = os.getenv(
-    "FLASK_SECRET_KEY"
-)
-
 SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT", "serviceAccountKey.json")
-DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL")
-FIREBASE_API_KEY = os.getenv("FIREBASE_WEB_API_KEY")
-FIREBASE_AUTH_BASE_URL = "https://identitytoolkit.googleapis.com/v1/accounts:"
+DATABASE_URL = os.getenv(
+    "FIREBASE_DATABASE_URL",
+    "https://testing-d431b-default-rtdb.firebaseio.com/"
+)
 
 if not firebase_admin._apps:
     if not os.path.exists(SERVICE_ACCOUNT):
-        raise FileNotFoundError(
-            f"File service account '{SERVICE_ACCOUNT}' tidak ditemukan. "
-        )
+        raise FileNotFoundError("Firebase service account file not found.")
     cred = credentials.Certificate(SERVICE_ACCOUNT)
     firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
 
 reviews_ref = db.reference("ai_reviews")
-users_ref = db.reference("users")
 
 TRAIN_DATA = [
     ("aplikasinya sangat bagus dan mudah digunakan", "Positif"),
@@ -143,14 +132,17 @@ ai_model = Pipeline([
     )),
     ("classifier", LogisticRegression(
         max_iter=2000,
-        class_weight="balanced",
+        class_weight="balanced", 
         C=2.0,
         solver="lbfgs",
     ))
 ])
+
 ai_model.fit(TRAIN_TEXTS, TRAIN_LABELS)
 
+
 def predict_sentiment(text):
+    """Prediksi sentimen dengan confidence + fallback rule-based untuk Netral."""
     if not text or not text.strip():
         return "Netral", 0.0
 
@@ -194,142 +186,7 @@ def get_all_reviews():
     return rows
 
 
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if "id_token" not in session:
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-def firebase_sign_up(email, password):
-    url = f"{FIREBASE_AUTH_BASE_URL}signUp?key={FIREBASE_API_KEY}"
-    payload = {"email": email, "password": password, "returnSecureToken": True}
-    return requests.post(url, json=payload, timeout=15)
-
-
-def firebase_sign_in(email, password):
-    url = f"{FIREBASE_AUTH_BASE_URL}signInWithPassword?key={FIREBASE_API_KEY}"
-    payload = {"email": email, "password": password, "returnSecureToken": True}
-    return requests.post(url, json=payload, timeout=15)
-
-
-def firebase_update_profile(id_token, display_name):
-    url = f"{FIREBASE_AUTH_BASE_URL}update?key={FIREBASE_API_KEY}"
-    payload = {"idToken": id_token, "displayName": display_name, "returnSecureToken": True}
-    return requests.post(url, json=payload, timeout=15)
-
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        confirm = request.form.get("confirm_password", "")
-
-        if not name or not email or not password:
-            return render_template("register.html", error="Semua field wajib diisi.")
-        if password != confirm:
-            return render_template("register.html", error="Password dan konfirmasi tidak cocok.")
-        if len(password) < 6:
-            return render_template("register.html", error="Password minimal 6 karakter.")
-
-        try:
-            response = firebase_sign_up(email, password)
-            if response.status_code != 200:
-                msg = response.json().get("error", {}).get("message", "REGISTRATION_FAILED")
-                return render_template("register.html", error=f"Registrasi gagal: {msg}")
-
-            data = response.json()
-            id_token = data["idToken"]
-            local_id = data["localId"]
-
-            users_ref.child(local_id).set({
-                "name": name,
-                "email": email,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-
-            try:
-                firebase_update_profile(id_token, name)
-            except Exception:
-                pass 
-
-            session["id_token"] = id_token
-            session["local_id"] = local_id
-            session["email"] = email
-            session["name"] = name
-
-            return redirect(url_for("index"))
-
-        except requests.exceptions.RequestException:
-            return render_template("register.html", error="Gagal terhubung ke server autentikasi.")
-
-    return render_template("register.html")
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-
-        if not email or not password:
-            return render_template("login.html", error="Email dan password wajib diisi.")
-
-        try:
-            response = firebase_sign_in(email, password)
-            if response.status_code != 200:
-                msg = response.json().get("error", {}).get("message", "LOGIN_FAILED")
-                friendly = {
-                    "EMAIL_NOT_FOUND": "Email tidak terdaftar.",
-                    "INVALID_PASSWORD": "Password salah.",
-                    "INVALID_LOGIN_CREDENTIALS": "Email atau password salah.",
-                    "USER_DISABLED": "Akun ini dinonaktifkan.",
-                    "TOO_MANY_ATTEMPTS_TRY_LATER": "Terlalu banyak percobaan. Coba lagi nanti.",
-                }.get(msg, f"Login gagal: {msg}")
-                return render_template("login.html", error=friendly)
-
-            data = response.json()
-            local_id = data["localId"]
-
-            profile = users_ref.child(local_id).get() or {}
-            name = profile.get("name") or data.get("displayName") or email.split("@")[0]
-
-            session["id_token"] = data["idToken"]
-            session["local_id"] = local_id
-            session["email"] = data["email"]
-            session["name"] = name
-
-            return redirect(url_for("index"))
-
-        except requests.exceptions.RequestException:
-            return render_template("login.html", error="Gagal terhubung ke server autentikasi.")
-
-    return render_template("login.html")
-
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
-
-
-@app.route("/profile")
-@login_required
-def profile():
-    return render_template(
-        "profile.html",
-        email=session.get("email"),
-        name=session.get("name"),
-        local_id=session.get("local_id"),
-    )
-
-
 @app.route("/")
-@login_required
 def index():
     reviews = get_all_reviews()
     counts = {
@@ -342,7 +199,6 @@ def index():
 
 
 @app.route("/create", methods=["POST"])
-@login_required
 def create():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip()
@@ -363,7 +219,6 @@ def create():
         "rating": int(rating),
         "sentiment": sentiment,
         "confidence": confidence,
-        "user_id": session.get("local_id"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     reviews_ref.push(record)
@@ -371,7 +226,6 @@ def create():
 
 
 @app.route("/edit/<review_id>")
-@login_required
 def edit(review_id):
     item = reviews_ref.child(review_id).get()
     if not item:
@@ -381,7 +235,6 @@ def edit(review_id):
 
 
 @app.route("/update/<review_id>", methods=["POST"])
-@login_required
 def update(review_id):
     existing = reviews_ref.child(review_id).get()
     if not existing:
@@ -412,15 +265,15 @@ def update(review_id):
     reviews_ref.child(review_id).update(updated_record)
     return redirect(url_for("index"))
 
+
 @app.route("/delete/<review_id>", methods=["POST"])
-@login_required
 def delete(review_id):
     reviews_ref.child(review_id).delete()
     return redirect(url_for("index"))
 
+
 @app.route("/api/reviews", methods=["GET"])
 def api_get_reviews():
-    """GET semua review (JSON)."""
     return jsonify(get_all_reviews())
 
 
