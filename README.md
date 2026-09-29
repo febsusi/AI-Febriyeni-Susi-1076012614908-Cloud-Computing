@@ -9,6 +9,7 @@ Project web Artificial Intelligence sederhana :
 - CRUD
 - Machine Learning sentiment analysis
 - TF-IDF + Logistic Regression
+- Untuk menjalankan secara lokal perlu serviceAccountKey.json yang hanya ada pada file zip tidak bisa diupload pada github
 
 Setiap review menyimpan minimal 8 field:
 1. name
