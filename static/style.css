@@ -1,0 +1,258 @@
+body {
+    background: #f5f7fb;
+    color: #212529;
+}
+
+.hero-card {
+    background: #78a77c;
+    color: whitergb(13, 253, 157);
+    border-radius: 22px;
+    box-shadow: 0 12px 30px rgba(25, 253, 13, 0.25);
+}
+
+.display-ai {
+    font-size: 7rem;
+    filter: drop-shadow(0 10px 15px rgba(0, 0, 0, .2));
+}
+
+.h1 {
+    font-size: 7rem;
+    filter: drop-shadow(0 10px 15px rgba(0, 0, 0, .2));
+}
+
+.stat-card {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 5px 18px rgba(0, 0, 0, .06);
+    height: 100%;
+    border-left: 5px solid #78a77c;
+}
+
+.stat-card.stat-success {
+    border-left-color: #198754;
+}
+
+.stat-card.stat-warning {
+    border-left-color: #ffc107;
+}
+
+.stat-card.stat-danger {
+    border-left-color: #dc3545;
+}
+
+.stat-card.stat-info {
+    border-left-color: #0dcaf0;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #212529;
+}
+
+.card {
+    border: 0;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, .06);
+}
+
+.card-header {
+    padding: 16px 20px;
+    border-bottom: 0;
+}
+
+.card-header.header-primary {
+    background: #198754;
+    color: white;
+}
+
+.card-header.header-success {
+    background: #198754;
+    color: white;
+}
+
+.card-header.header-warning {
+    background: #ffc107;
+    color: #212529;
+}
+
+.card-header.header-danger {
+    background: #dc3545;
+    color: white;
+}
+
+.card-header.header-dark {
+    background: #212529;
+    color: white;
+}
+
+.form-label {
+    color: #198754;
+}
+
+.form-control,
+.form-select {
+    border-radius: 10px;
+    padding: 11px 13px;
+    border: 1.5px solid #dee2e6;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: #198754;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, .15);
+}
+
+.btn {
+    border-radius: 9px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, .1);
+}
+
+.badge-kategori {
+    background: #198754;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+}
+
+.badge-prioritas-tinggi {
+    background: #dc3545;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+}
+
+.badge-prioritas-sedang {
+    background: #ffc107;
+    color: #212529;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+}
+
+.badge-prioritas-rendah {
+    background: #198754;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+}
+
+.badge-status-belum {
+    background: #e2e8f0;
+    color: #475569;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+}
+
+.badge-status-proses {
+    background: #fff3cd;
+    color: #92400e;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+}
+
+.badge-status-selesai {
+    background: #d1fae5;
+    color: #065f46;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+}
+
+.review-cell {
+    min-width: 240px;
+    max-width: 380px;
+}
+
+.table th {
+    white-space: nowrap;
+    background: #f8f9fa;
+    color: #495057;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.task-card {
+    background: white;
+    border-left: 5px solid #198754;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.task-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, .12);
+}
+
+.task-card.priority-tinggi {
+    border-left-color: #dc3545;
+}
+
+.task-card.priority-sedang {
+    border-left-color: #ffc107;
+}
+
+.task-card.priority-rendah {
+    border-left-color: #198754;
+}
+
+.task-card.status-selesai {
+    border-left-color: #198754;
+    opacity: 0.85;
+}
+
+.alert {
+    border-radius: 12px;
+    border: 0;
+}
+
+.navbar {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .08);
+}
+
+.navbar-brand {
+    font-size: 1.3rem;
+    letter-spacing: 0.5px;
+}
+
+footer {
+    font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+    .display-ai {
+        font-size: 4rem;
+        margin-top: 20px;
+    }
+
+    .stat-number {
+        font-size: 1.5rem;
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "ai_reviews": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
