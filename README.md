@@ -1,4 +1,4 @@
-# Sesi 9 - AI Based Sentiment Review - Flask + Firebase Realtime Database + Firebase Authentication (Login/Register)
+# Sesi 10 - AI Based Sentiment Review - Flask + Firebase Realtime Database + Firebase Authentication (Login/Register)
 # (By Febriyeni Susi - 1076012614908)
 
 Project web Artificial Intelligence sederhana :
