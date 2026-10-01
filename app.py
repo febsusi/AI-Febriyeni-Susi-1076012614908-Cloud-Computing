@@ -1,39 +1,108 @@
 import os
+import json
 from datetime import datetime, timezone
 from functools import wraps
-from dotenv import load_dotenv
 
-load_dotenv()
-
-import firebase_admin
 import requests
-from firebase_admin import credentials, db
-from flask import (Flask, jsonify, redirect, render_template, request, session, url_for)
+from flask import (
+    Flask, jsonify, redirect, render_template, request, session, url_for
+)
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 app = Flask(__name__)
 
 app.secret_key = os.getenv(
-    "FLASK_SECRET_KEY"
+    "FLASK_SECRET_KEY",
+    "ubah-ini-dengan-string-acak-panjang-minimal-32-karakter-ya"
 )
 
-SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT", "serviceAccountKey.json")
-DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL")
+FIREBASE_DB_URL = os.getenv("FIREBASE_DATABASE_URL")
+FIREBASE_DB_SECRET = os.getenv("FIREBASE_DATABASE_SECRET")
 FIREBASE_API_KEY = os.getenv("FIREBASE_WEB_API_KEY")
 FIREBASE_AUTH_BASE_URL = "https://identitytoolkit.googleapis.com/v1/accounts:"
 
-if not firebase_admin._apps:
-    if not os.path.exists(SERVICE_ACCOUNT):
-        raise FileNotFoundError(
-            f"File service account '{SERVICE_ACCOUNT}' tidak ditemukan. "
-        )
-    cred = credentials.Certificate(SERVICE_ACCOUNT)
-    firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
+# Pastikan URL tidak berakhir dengan "/"
+if FIREBASE_DB_URL and FIREBASE_DB_URL.endswith("/"):
+    FIREBASE_DB_URL = FIREBASE_DB_URL[:-1]
 
-reviews_ref = db.reference("ai_reviews")
-users_ref = db.reference("users")
+if not FIREBASE_DB_URL:
+    raise ValueError(
+        "FIREBASE_DATABASE_URL tidak di-set. "
+        "Tambahkan di environment variables."
+    )
+if not FIREBASE_DB_SECRET:
+    raise ValueError(
+        "FIREBASE_DATABASE_SECRET tidak di-set. "
+        "Dapatkan dari Firebase Console → Project Settings → Service Accounts → Database Secrets."
+    )
+
+print("Konfigurasi Firebase REST API siap")
+print(f"   Database URL: {FIREBASE_DB_URL}")
+
+
+def firebase_get(path):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_get({path}): {e}")
+        return None
+
+
+def firebase_set(path, data):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.put(url, json=data, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_set({path}): {e}")
+        return None
+
+
+def firebase_push(path, data):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.post(url, json=data, timeout=15)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("name") if isinstance(result, dict) else None
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_push({path}): {e}")
+        return None
+
+
+def firebase_update(path, data):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.patch(url, json=data, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_update({path}): {e}")
+        return None
+
+
+def firebase_delete(path):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.delete(url, timeout=15)
+        response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_delete({path}): {e}")
+        return False
+
 
 TRAIN_DATA = [
     ("aplikasinya sangat bagus dan mudah digunakan", "Positif"),
@@ -149,6 +218,8 @@ ai_model = Pipeline([
     ))
 ])
 ai_model.fit(TRAIN_TEXTS, TRAIN_LABELS)
+print("Model ML berhasil dilatih")
+
 
 def predict_sentiment(text):
     if not text or not text.strip():
@@ -183,7 +254,7 @@ def predict_sentiment(text):
 
 
 def get_all_reviews():
-    data = reviews_ref.get() or {}
+    data = firebase_get("ai_reviews") or {}
     rows = []
     for review_id, item in data.items():
         if isinstance(item, dict):
@@ -246,7 +317,8 @@ def register():
             id_token = data["idToken"]
             local_id = data["localId"]
 
-            users_ref.child(local_id).set({
+            # Simpan profil user via REST API
+            firebase_set(f"users/{local_id}", {
                 "name": name,
                 "email": email,
                 "created_at": datetime.now(timezone.utc).isoformat()
@@ -255,7 +327,7 @@ def register():
             try:
                 firebase_update_profile(id_token, name)
             except Exception:
-                pass 
+                pass
 
             session["id_token"] = id_token
             session["local_id"] = local_id
@@ -295,7 +367,8 @@ def login():
             data = response.json()
             local_id = data["localId"]
 
-            profile = users_ref.child(local_id).get() or {}
+            # Ambil profil user via REST API
+            profile = firebase_get(f"users/{local_id}") or {}
             name = profile.get("name") or data.get("displayName") or email.split("@")[0]
 
             session["id_token"] = data["idToken"]
@@ -366,14 +439,14 @@ def create():
         "user_id": session.get("local_id"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    reviews_ref.push(record)
+    firebase_push("ai_reviews", record)
     return redirect(url_for("index"))
 
 
 @app.route("/edit/<review_id>")
 @login_required
 def edit(review_id):
-    item = reviews_ref.child(review_id).get()
+    item = firebase_get(f"ai_reviews/{review_id}")
     if not item:
         return redirect(url_for("index"))
     item["id"] = review_id
@@ -383,7 +456,7 @@ def edit(review_id):
 @app.route("/update/<review_id>", methods=["POST"])
 @login_required
 def update(review_id):
-    existing = reviews_ref.child(review_id).get()
+    existing = firebase_get(f"ai_reviews/{review_id}")
     if not existing:
         return redirect(url_for("index"))
 
@@ -409,18 +482,19 @@ def update(review_id):
         "created_at": existing.get("created_at", datetime.now(timezone.utc).isoformat()),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    reviews_ref.child(review_id).update(updated_record)
+    firebase_update(f"ai_reviews/{review_id}", updated_record)
     return redirect(url_for("index"))
+
 
 @app.route("/delete/<review_id>", methods=["POST"])
 @login_required
 def delete(review_id):
-    reviews_ref.child(review_id).delete()
+    firebase_delete(f"ai_reviews/{review_id}")
     return redirect(url_for("index"))
+
 
 @app.route("/api/reviews", methods=["GET"])
 def api_get_reviews():
-    """GET semua review (JSON)."""
     return jsonify(get_all_reviews())
 
 
@@ -442,13 +516,13 @@ def api_create_review():
         "confidence": confidence,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    new_ref = reviews_ref.push(record)
-    return jsonify({"id": new_ref.key, **record}), 201
+    new_key = firebase_push("ai_reviews", record)
+    return jsonify({"id": new_key, **record}), 201
 
 
 @app.route("/api/reviews/<review_id>", methods=["PUT"])
 def api_update_review(review_id):
-    existing = reviews_ref.child(review_id).get()
+    existing = firebase_get(f"ai_reviews/{review_id}")
     if not existing:
         return jsonify({"error": "Review not found"}), 404
 
@@ -467,15 +541,15 @@ def api_update_review(review_id):
         "created_at": existing.get("created_at"),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    reviews_ref.child(review_id).update(updated)
+    firebase_update(f"ai_reviews/{review_id}", updated)
     return jsonify({"id": review_id, **updated})
 
 
 @app.route("/api/reviews/<review_id>", methods=["DELETE"])
 def api_delete_review(review_id):
-    reviews_ref.child(review_id).delete()
+    firebase_delete(f"ai_reviews/{review_id}")
     return jsonify({"message": "Deleted successfully"})
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", debug=False)
