@@ -17,9 +17,24 @@
         </div>
 
         <div class="auth-body">
-            {% if error %}
-            <div class="alert alert-danger">{{ error }}</div>
+
+            {% if success %}
+            <div class="alert alert-success">
+                 {{ success }}
+            </div>
             {% endif %}
+
+            {% if error %}
+            <div class="alert alert-danger">
+                 {{ error }}
+            </div>
+            {% endif %}
+
+            <div class="alert alert-info small">
+                 <strong>Perhatian:</strong> Setelah mendaftar, kami akan mengirim
+                <strong>link verifikasi</strong> ke email Anda. Silakan cek inbox
+                (atau folder <em>spam</em>) dan klik link tersebut sebelum login.
+            </div>
 
             <form method="POST" action="{{ url_for('register') }}">
                 <div class="mb-3">
