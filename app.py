@@ -29,8 +29,7 @@ FIREBASE_DB_SECRET = os.getenv("FIREBASE_DATABASE_SECRET")
 FIREBASE_API_KEY = os.getenv("FIREBASE_WEB_API_KEY")
 FIREBASE_AUTH_BASE_URL = "https://identitytoolkit.googleapis.com/v1/accounts:"
 
-APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
-
+# Pastikan URL tidak berakhir dengan "/"
 if FIREBASE_DB_URL and FIREBASE_DB_URL.endswith("/"):
     FIREBASE_DB_URL = FIREBASE_DB_URL[:-1]
 
@@ -293,44 +292,6 @@ def firebase_update_profile(id_token, display_name):
     return requests.post(url, json=payload, timeout=15)
 
 
-def firebase_send_verification_email(id_token, continue_url=None):
-    url = f"{FIREBASE_AUTH_BASE_URL}sendOobCode?key={FIREBASE_API_KEY}"
-    payload = {
-        "requestType": "VERIFY_EMAIL",
-        "idToken": id_token
-    }
-    if continue_url:
-        payload["continueUrl"] = continue_url
-    return requests.post(url, json=payload, timeout=15)
-
-
-def firebase_lookup(id_token):
-    url = f"{FIREBASE_AUTH_BASE_URL}lookup?key={FIREBASE_API_KEY}"
-    payload = {"idToken": id_token}
-    return requests.post(url, json=payload, timeout=15)
-
-
-def translate_auth_error(msg):
-    mapping = {
-        "EMAIL_NOT_FOUND": "Email tidak terdaftar. Silakan register terlebih dahulu.",
-        "INVALID_PASSWORD": "Password salah. Silakan periksa kembali.",
-        "INVALID_LOGIN_CREDENTIALS": "Email atau password salah.",
-        "INVALID_EMAIL": "Format email tidak valid.",
-        "EMAIL_EXISTS": "Email sudah terdaftar. Silakan login.",
-        "USER_DISABLED": "Akun ini dinonaktifkan.",
-        "TOO_MANY_ATTEMPTS_TRY_LATER": "Terlalu banyak percobaan. Coba lagi nanti.",
-        "WEAK_PASSWORD": "Password terlalu lemah. Gunakan minimal 6 karakter.",
-        "MISSING_EMAIL": "Email wajib diisi.",
-        "MISSING_PASSWORD": "Password wajib diisi.",
-        "OPERATION_NOT_ALLOWED": "Metode login ini belum diaktifkan.",
-        "INVALID_ID_TOKEN": "Sesi tidak valid. Silakan login ulang.",
-        "USER_NOT_FOUND": "Akun tidak ditemukan.",
-        "EXPIRED_OOB_CODE": "Link verifikasi sudah kedaluwarsa. Minta link baru.",
-        "INVALID_OOB_CODE": "Link verifikasi tidak valid atau sudah digunakan.",
-    }
-    return mapping.get(msg, f"Terjadi kesalahan: {msg}")
-
-
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -350,58 +311,30 @@ def register():
             response = firebase_sign_up(email, password)
             if response.status_code != 200:
                 msg = response.json().get("error", {}).get("message", "REGISTRATION_FAILED")
-                return render_template("register.html", error=translate_auth_error(msg))
+                return render_template("register.html", error=f"Registrasi gagal: {msg}")
 
             data = response.json()
             id_token = data["idToken"]
             local_id = data["localId"]
 
-            # Simpan profil user
+            # Simpan profil user via REST API
             firebase_set(f"users/{local_id}", {
                 "name": name,
                 "email": email,
-                "email_verified": False,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
 
-            # Update display name
             try:
                 firebase_update_profile(id_token, name)
             except Exception:
                 pass
 
-            # === KIRIM EMAIL VERIFIKASI ===
-            # continueUrl → halaman login setelah user klik link di email
-            continue_url = f"{APP_BASE_URL}/login?verified=1" if APP_BASE_URL else None
+            session["id_token"] = id_token
+            session["local_id"] = local_id
+            session["email"] = email
+            session["name"] = name
 
-            try:
-                verify_resp = firebase_send_verification_email(id_token, continue_url)
-                if verify_resp.status_code != 200:
-                    err = verify_resp.json().get("error", {}).get("message", "SEND_EMAIL_FAILED")
-                    print(f"Gagal kirim email verifikasi: {err}")
-                    # Tetap lanjut, tapi kasih tahu user
-                    return render_template(
-                        "register.html",
-                        error=f"Akun dibuat, tetapi gagal mengirim email verifikasi: {translate_auth_error(err)}. "
-                              f"Silakan coba login lalu klik 'Kirim ulang verifikasi'."
-                    )
-            except requests.exceptions.RequestException as e:
-                print(f"Error koneksi saat kirim email: {e}")
-                return render_template(
-                    "register.html",
-                    error="Akun dibuat, tetapi gagal mengirim email verifikasi. "
-                          "Silakan coba login lalu klik 'Kirim ulang verifikasi'."
-                )
-
-            # JANGAN auto-login — user harus verifikasi dulu
-            # Redirect ke halaman login dengan pesan sukses
-            return render_template(
-                "login.html",
-                success=f"Akun berhasil dibuat! Kami telah mengirim link verifikasi ke {email}. "
-                        f"Silakan cek inbox (atau folder spam) Anda dan klik link tersebut sebelum login.",
-                show_resend=True,
-                email_for_resend=email
-            )
+            return redirect(url_for("index"))
 
         except requests.exceptions.RequestException:
             return render_template("register.html", error="Gagal terhubung ke server autentikasi.")
@@ -411,60 +344,34 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    # Notifikasi jika user baru saja klik link verifikasi
-    just_verified = request.args.get("verified") == "1"
-    success_msg = None
-    if just_verified:
-        success_msg = "Email Anda telah diverifikasi! Silakan login sekarang."
-
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
 
         if not email or not password:
-            return render_template(
-                "login.html",
-                error="Email dan password wajib diisi.",
-                success=success_msg
-            )
+            return render_template("login.html", error="Email dan password wajib diisi.")
 
         try:
             response = firebase_sign_in(email, password)
-
             if response.status_code != 200:
                 msg = response.json().get("error", {}).get("message", "LOGIN_FAILED")
-                friendly = translate_auth_error(msg)
-                return render_template(
-                    "login.html",
-                    error=friendly,
-                    success=success_msg
-                )
+                friendly = {
+                    "EMAIL_NOT_FOUND": "Email tidak terdaftar.",
+                    "INVALID_PASSWORD": "Password salah.",
+                    "INVALID_LOGIN_CREDENTIALS": "Email atau password salah.",
+                    "USER_DISABLED": "Akun ini dinonaktifkan.",
+                    "TOO_MANY_ATTEMPTS_TRY_LATER": "Terlalu banyak percobaan. Coba lagi nanti.",
+                }.get(msg, f"Login gagal: {msg}")
+                return render_template("login.html", error=friendly)
 
             data = response.json()
             local_id = data["localId"]
-            id_token = data["idToken"]
-            email_verified = data.get("emailVerified", False)
 
-            # === CEK EMAIL VERIFIED ===
-            if not email_verified:
-                return render_template(
-                    "login.html",
-                    error="Email Anda belum diverifikasi. Silakan cek inbox dan klik link verifikasi. "
-                          "Jika tidak menerima email, klik tombol 'Kirim Ulang Verifikasi' di bawah.",
-                    show_resend=True,
-                    email_for_resend=email
-                )
-
+            # Ambil profil user via REST API
             profile = firebase_get(f"users/{local_id}") or {}
             name = profile.get("name") or data.get("displayName") or email.split("@")[0]
 
-            if not profile.get("email_verified"):
-                firebase_update(f"users/{local_id}", {
-                    "email_verified": True,
-                    "verified_at": datetime.now(timezone.utc).isoformat()
-                })
-
-            session["id_token"] = id_token
+            session["id_token"] = data["idToken"]
             session["local_id"] = local_id
             session["email"] = data["email"]
             session["name"] = name
@@ -472,75 +379,9 @@ def login():
             return redirect(url_for("index"))
 
         except requests.exceptions.RequestException:
-            return render_template(
-                "login.html",
-                error="Gagal terhubung ke server autentikasi. Periksa koneksi internet Anda.",
-                success=success_msg
-            )
+            return render_template("login.html", error="Gagal terhubung ke server autentikasi.")
 
-    return render_template("login.html", success=success_msg)
-
-
-@app.route("/resend-verification", methods=["POST"])
-def resend_verification():
-    email = request.form.get("email", "").strip()
-    password = request.form.get("password", "").strip()
-
-    if not email or not password:
-        return render_template(
-            "login.html",
-            error="Untuk mengirim ulang verifikasi, isi email dan password Anda.",
-            show_resend=True,
-            email_for_resend=email
-        )
-
-    try:
-        signin_resp = firebase_sign_in(email, password)
-        if signin_resp.status_code != 200:
-            msg = signin_resp.json().get("error", {}).get("message", "LOGIN_FAILED")
-            return render_template(
-                "login.html",
-                error=translate_auth_error(msg),
-                show_resend=True,
-                email_for_resend=email
-            )
-
-        data = signin_resp.json()
-        id_token = data["idToken"]
-
-        if data.get("emailVerified", False):
-            return render_template(
-                "login.html",
-                success="Email Anda sudah diverifikasi. Silakan login.",
-                email_for_resend=email
-            )
-
-        continue_url = f"{APP_BASE_URL}/login?verified=1" if APP_BASE_URL else None
-        resp = firebase_send_verification_email(id_token, continue_url)
-
-        if resp.status_code == 200:
-            return render_template(
-                "login.html",
-                success=f"Email verifikasi baru telah dikirim ke {email}. Silakan cek inbox Anda.",
-                show_resend=True,
-                email_for_resend=email
-            )
-        else:
-            err = resp.json().get("error", {}).get("message", "SEND_EMAIL_FAILED")
-            return render_template(
-                "login.html",
-                error=translate_auth_error(err),
-                show_resend=True,
-                email_for_resend=email
-            )
-
-    except requests.exceptions.RequestException:
-        return render_template(
-            "login.html",
-            error="Gagal terhubung ke server autentikasi.",
-            show_resend=True,
-            email_for_resend=email
-        )
+    return render_template("login.html")
 
 
 @app.route("/logout")
