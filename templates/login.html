@@ -17,12 +17,12 @@
         </div>
 
         <div class="auth-body">
-            {% if success %}
-            <div class="alert alert-success">{{ success }}</div>
-            {% endif %}
-
             {% if error %}
             <div class="alert alert-danger">{{ error }}</div>
+            {% endif %}
+
+            {% if success %}
+            <div class="alert alert-success">{{ success }}</div>
             {% endif %}
 
             <form method="POST" action="{{ url_for('login') }}">
@@ -44,10 +44,6 @@
 
             {% if show_resend %}
             <hr class="my-4">
-            <p class="text-muted small mb-2 text-center">
-                📬 Belum menerima email verifikasi?<br>
-                Masukkan password Anda untuk mengirim ulang.
-            </p>
             <form method="POST" action="{{ url_for('resend_verification') }}">
                 <input type="hidden" name="email" value="{{ email_for_resend or '' }}">
                 <div class="mb-3">
