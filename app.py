@@ -35,12 +35,11 @@ if FIREBASE_DB_URL and FIREBASE_DB_URL.endswith("/"):
 
 if not FIREBASE_DB_URL:
     raise ValueError(
-        "FIREBASE_DATABASE_URL tidak di-set. "
-        "Tambahkan di environment variables."
+        "FIREBASE_DATABASE_URL tidak diset. "
     )
 if not FIREBASE_DB_SECRET:
     raise ValueError(
-        "FIREBASE_DATABASE_SECRET tidak di-set. "
+        "FIREBASE_DATABASE_SECRET tidak diset. "
     )
 
 print("Konfigurasi Firebase REST API siap")
@@ -309,7 +308,6 @@ def firebase_lookup(id_token):
 
 
 def translate_auth_error(msg):
-    """Terjemahkan error code Firebase ke pesan yang ramah."""
     mapping = {
         "EMAIL_NOT_FOUND": "Email tidak terdaftar. Silakan register terlebih dahulu.",
         "INVALID_PASSWORD": "Password salah. Silakan periksa kembali.",
@@ -478,7 +476,6 @@ def resend_verification():
     password = request.form.get("password", "").strip()
     from_register = request.form.get("from_register") == "1"
 
-    # Tentukan template tujuan
     target_template = "register.html" if from_register else "login.html"
     extra_ctx = {"verification_pending": True} if from_register else {"show_resend": True}
 
