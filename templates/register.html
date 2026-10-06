@@ -16,35 +16,25 @@
         <div class="auth-header">
             <span class="auth-icon">📬</span>
             <h2>Cek Email Anda</h2>
-            <p>Satu langkah lagi untuk mengaktifkan akun</p>
+            <p>Link verifikasi telah dikirim ke email Anda</p>
         </div>
 
         <div class="auth-body">
-
-            {# ==================== PESAN SUKSES ==================== #}
-            {% if success %}
-            <div class="alert alert-success">
-                ✅ {{ success }}
-            </div>
-            {% endif %}
-
-            {# ==================== PESAN ERROR ==================== #}
             {% if error %}
-            <div class="alert alert-danger">
-                ⚠️ {{ error }}
-            </div>
+            <div class="alert alert-danger">{{ error }}</div>
             {% endif %}
 
-            {# ==================== INFO EMAIL TUJUAN ==================== #}
+            {% if success %}
+            <div class="alert alert-success">{{ success }}</div>
+            {% endif %}
+
             <div class="text-center mb-4">
-                <div style="font-size: 3rem;">📧</div>
-                <h6 class="mt-2 mb-1">Link verifikasi telah dikirim ke:</h6>
-                <p class="fw-bold mb-0" style="color: #198754; word-break: break-all;">
+                <p class="mb-1">Email tujuan:</p>
+                <p class="fw-bold" style="color: #198754; word-break: break-all;">
                     {{ email_for_resend }}
                 </p>
             </div>
 
-            {# ==================== LANGKAH SELANJUTNYA ==================== #}
             <div class="alert alert-info small">
                 📌 <strong>Langkah selanjutnya:</strong>
                 <ol class="mb-0 mt-2 ps-3">
@@ -64,12 +54,11 @@
 
             <hr class="my-4">
 
-            {# ==================== FORM KIRIM ULANG VERIFIKASI ==================== #}
-            <p class="text-muted small mb-2 text-center">Belum menerima email?</p>
             <form method="POST" action="{{ url_for('resend_verification') }}">
                 <input type="hidden" name="email" value="{{ email_for_resend or '' }}">
                 <input type="hidden" name="from_register" value="1">
-                <div class="mb-2">
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
                     <input type="password" name="password" class="form-control"
                            placeholder="Masukkan password Anda" required>
                 </div>
@@ -93,29 +82,20 @@
         </div>
 
         <div class="auth-body">
-
-            {# ==================== PESAN SUKSES ==================== #}
-            {% if success %}
-            <div class="alert alert-success">
-                ✅ {{ success }}
-            </div>
-            {% endif %}
-
-            {# ==================== PESAN ERROR ==================== #}
             {% if error %}
-            <div class="alert alert-danger">
-                ⚠️ {{ error }}
-            </div>
+            <div class="alert alert-danger">{{ error }}</div>
             {% endif %}
 
-            {# ==================== INFO VERIFIKASI EMAIL ==================== #}
+            {% if success %}
+            <div class="alert alert-success">{{ success }}</div>
+            {% endif %}
+
             <div class="alert alert-info small">
                 📧 <strong>Perhatian:</strong> Setelah mendaftar, kami akan mengirim
                 <strong>link verifikasi</strong> ke email Anda. Silakan cek inbox
                 (atau folder <em>spam</em>) dan klik link tersebut sebelum login.
             </div>
 
-            {# ==================== FORM REGISTER ==================== #}
             <form method="POST" action="{{ url_for('register') }}">
                 <div class="mb-3">
                     <label class="form-label">Nama Lengkap</label>
