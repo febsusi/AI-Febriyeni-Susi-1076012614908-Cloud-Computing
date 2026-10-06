@@ -257,7 +257,6 @@ footer {
     }
 }
 
-/* ==================== CARD ==================== */
 .card {
     border: 0;
     border-radius: 16px;
@@ -265,9 +264,6 @@ footer {
     box-shadow: 0 3px 12px rgba(0, 0, 0, .05);
 }
 
-/* ... (kode lainnya) ... */
-
-/* ==================== AUTH SECTION ==================== */
 .auth-wrapper {
     min-height: 100vh;
     display: flex;
@@ -327,7 +323,6 @@ footer {
     text-decoration: underline;
 }
 
-/* ==================== ALERT CUSTOM ==================== */
 .alert {
     border-radius: 12px;
     border: 0;
