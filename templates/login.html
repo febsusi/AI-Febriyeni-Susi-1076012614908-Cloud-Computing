@@ -17,6 +17,10 @@
         </div>
 
         <div class="auth-body">
+            {% if success %}
+            <div class="alert alert-success">{{ success }}</div>
+            {% endif %}
+
             {% if error %}
             <div class="alert alert-danger">{{ error }}</div>
             {% endif %}
@@ -25,7 +29,8 @@
                 <div class="mb-3">
                     <label class="form-label">Email</label>
                     <input type="email" name="email" class="form-control"
-                           placeholder="nama@email.com" required>
+                           placeholder="nama@email.com"
+                           value="{{ email_for_resend or '' }}" required>
                 </div>
                 <div class="mb-4">
                     <label class="form-label">Password</label>
@@ -36,6 +41,25 @@
                     Login
                 </button>
             </form>
+
+            {% if show_resend %}
+            <hr class="my-4">
+            <p class="text-muted small mb-2 text-center">
+                📬 Belum menerima email verifikasi?<br>
+                Masukkan password Anda untuk mengirim ulang.
+            </p>
+            <form method="POST" action="{{ url_for('resend_verification') }}">
+                <input type="hidden" name="email" value="{{ email_for_resend or '' }}">
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" name="password" class="form-control"
+                           placeholder="Masukkan password Anda" required>
+                </div>
+                <button type="submit" class="btn btn-warning w-100 py-2">
+                    📧 Kirim Ulang Email Verifikasi
+                </button>
+            </form>
+            {% endif %}
         </div>
 
         <div class="auth-footer">
