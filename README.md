@@ -36,10 +36,6 @@ pip install -r requirements.txt
 python app.py
 ```
 
-port and host akan terbuka pada:
-http://127.0.0.1:5000
-
-
 # CRUD
 ## CREATE
 - Nama
