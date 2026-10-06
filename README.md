@@ -6,6 +6,7 @@ Link Railway - Live : https://febriyeni-ai-sentiment-cloud-computing.up.railway.
 Project web Artificial Intelligence sederhana :
 - Flask
 - Firebase Realtime Database (BaaS)
+- Email Verification
 - Firebase Authentication (Login/Register)
 - Bootstrap 5
 - CRUD
