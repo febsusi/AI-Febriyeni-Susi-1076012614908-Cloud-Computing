@@ -12,68 +12,80 @@
     <div class="auth-card">
 
         {% if verification_pending %}
-        <div class="auth-header" style="background: #ffc107; color: #212529;">
+        {# ==================== STATE: MENUNGGU VERIFIKASI EMAIL ==================== #}
+        <div class="auth-header">
             <span class="auth-icon">📬</span>
             <h2>Cek Email Anda</h2>
-            <p style="color: #4a3b00;">Satu langkah lagi untuk mengaktifkan akun</p>
+            <p>Satu langkah lagi untuk mengaktifkan akun</p>
         </div>
 
-        <div class="auth-body text-center">
+        <div class="auth-body">
+
+            {# ==================== PESAN SUKSES ==================== #}
             {% if success %}
-            <div class="alert alert-success">{{ success }}</div>
+            <div class="alert alert-success">
+                ✅ {{ success }}
+            </div>
             {% endif %}
 
+            {# ==================== PESAN ERROR ==================== #}
             {% if error %}
-            <div class="alert alert-danger">{{ error }}</div>
+            <div class="alert alert-danger">
+                ⚠️ {{ error }}
+            </div>
             {% endif %}
 
-            <div class="mb-4">
-                <div style="font-size: 4rem;">📧</div>
-                <h5 class="mt-3">Link verifikasi telah dikirim ke:</h5>
-                <p class="fw-bold text-success" style="font-size: 1.1rem;">
+            {# ==================== INFO EMAIL TUJUAN ==================== #}
+            <div class="text-center mb-4">
+                <div style="font-size: 3rem;">📧</div>
+                <h6 class="mt-2 mb-1">Link verifikasi telah dikirim ke:</h6>
+                <p class="fw-bold mb-0" style="color: #198754; word-break: break-all;">
                     {{ email_for_resend }}
                 </p>
             </div>
 
-            <div class="alert alert-info small text-start">
-                <strong> Langkah selanjutnya:</strong>
+            {# ==================== LANGKAH SELANJUTNYA ==================== #}
+            <div class="alert alert-info small">
+                📌 <strong>Langkah selanjutnya:</strong>
                 <ol class="mb-0 mt-2 ps-3">
                     <li>Buka inbox email Anda</li>
                     <li>Cari email dari <strong>AI Sentiment Review</strong></li>
-                    <li>Klik link <strong>"Verify Email"</strong> di dalam email</li>
+                    <li>Klik link <strong>"Verify Email"</strong></li>
                     <li>Anda akan diarahkan ke halaman login</li>
                     <li>Login dengan email dan password Anda</li>
                 </ol>
             </div>
 
-            <div class="alert alert-warning small text-start">
-                 <strong>Tidak menemukan email?</strong> Periksa folder
-                <strong>Spam</strong> atau <strong>Promotions</strong>.
-                Jika masih tidak ada, kirim ulang di bawah ini.
+            <div class="alert alert-warning small">
+                ⚠️ <strong>Tidak menemukan email?</strong> Periksa folder
+                <em>Spam</em> atau <em>Promotions</em>. Jika masih tidak ada,
+                kirim ulang di bawah ini.
             </div>
 
-            {# Tombol resend verifikasi #}
             <hr class="my-4">
-            <p class="text-muted small mb-2">Belum menerima email?</p>
+
+            {# ==================== FORM KIRIM ULANG VERIFIKASI ==================== #}
+            <p class="text-muted small mb-2 text-center">Belum menerima email?</p>
             <form method="POST" action="{{ url_for('resend_verification') }}">
                 <input type="hidden" name="email" value="{{ email_for_resend or '' }}">
+                <input type="hidden" name="from_register" value="1">
                 <div class="mb-2">
                     <input type="password" name="password" class="form-control"
-                           placeholder="Masukkan password Anda untuk kirim ulang" required>
+                           placeholder="Masukkan password Anda" required>
                 </div>
-                <button type="submit" class="btn btn-warning w-100">
+                <button type="submit" class="btn btn-warning w-100 py-2">
                     📧 Kirim Ulang Email Verifikasi
                 </button>
             </form>
+        </div>
 
-            <div class="mt-3">
-                <a href="{{ url_for('login') }}" class="btn btn-link text-decoration-none">
-                    Sudah verifikasi? Login di sini 
-                </a>
-            </div>
+        <div class="auth-footer">
+            Sudah verifikasi?
+            <a href="{{ url_for('login') }}">Login di sini</a>
         </div>
 
         {% else %}
+        {# ==================== STATE: FORM REGISTER ==================== #}
         <div class="auth-header">
             <span class="auth-icon">✨</span>
             <h2>Buat Akun Baru</h2>
@@ -81,20 +93,29 @@
         </div>
 
         <div class="auth-body">
-            {% if error %}
-            <div class="alert alert-danger"> {{ error }}</div>
-            {% endif %}
 
+            {# ==================== PESAN SUKSES ==================== #}
             {% if success %}
-            <div class="alert alert-success"> {{ success }}</div>
+            <div class="alert alert-success">
+                ✅ {{ success }}
+            </div>
             {% endif %}
 
+            {# ==================== PESAN ERROR ==================== #}
+            {% if error %}
+            <div class="alert alert-danger">
+                ⚠️ {{ error }}
+            </div>
+            {% endif %}
+
+            {# ==================== INFO VERIFIKASI EMAIL ==================== #}
             <div class="alert alert-info small">
-                 <strong>Perhatian:</strong> Setelah mendaftar, kami akan mengirim
-                <strong>link verifikasi</strong> ke email Anda. Anda harus
-                <strong>memverifikasi email terlebih dahulu</strong> sebelum bisa login.
+                📧 <strong>Perhatian:</strong> Setelah mendaftar, kami akan mengirim
+                <strong>link verifikasi</strong> ke email Anda. Silakan cek inbox
+                (atau folder <em>spam</em>) dan klik link tersebut sebelum login.
             </div>
 
+            {# ==================== FORM REGISTER ==================== #}
             <form method="POST" action="{{ url_for('register') }}">
                 <div class="mb-3">
                     <label class="form-label">Nama Lengkap</label>
