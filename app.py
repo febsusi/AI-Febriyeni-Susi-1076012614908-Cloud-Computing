@@ -501,15 +501,23 @@ def resend_verification():
         data = signin_resp.json()
         id_token = data["idToken"]
 
-        # Cek apakah sudah verified
-        if data.get("emailVerified", False):
+        email_verified = False
+        try:
+            lookup_resp = firebase_lookup(id_token)
+            if lookup_resp.status_code == 200:
+                users = lookup_resp.json().get("users", [])
+                if users:
+                    email_verified = users[0].get("emailVerified", False)
+        except Exception:
+            email_verified = data.get("emailVerified", False)
+
+        if email_verified:
             return render_template(
                 "login.html",
-                success="Email Anda sudah diverifikasi. Silakan login.",
+                success="✅ Email Anda sudah diverifikasi! Silakan login sekarang.",
                 email_for_resend=email
             )
 
-        # Kirim ulang email verifikasi
         continue_url = f"{APP_BASE_URL}/login?verified=1" if APP_BASE_URL else None
         resp = firebase_send_verification_email(id_token, continue_url)
 
