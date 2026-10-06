@@ -423,23 +423,37 @@ def login():
 
             if response.status_code != 200:
                 msg = response.json().get("error", {}).get("message", "LOGIN_FAILED")
-                friendly = translate_auth_error(msg)
                 return render_template(
                     "login.html",
-                    error=friendly,
+                    error=translate_auth_error(msg),
                     success=success_msg
                 )
 
             data = response.json()
             local_id = data["localId"]
             id_token = data["idToken"]
-            email_verified = data.get("emailVerified", False)
+
+            email_verified = False
+            try:
+                lookup_resp = firebase_lookup(id_token)
+                if lookup_resp.status_code == 200:
+                    users = lookup_resp.json().get("users", [])
+                    if users:
+                        email_verified = users[0].get("emailVerified", False)
+                        print(f"[LOGIN] User {email} → emailVerified={email_verified}")
+                else:
+                    email_verified = data.get("emailVerified", False)
+                    print(f"[LOGIN] Lookup failed, fallback ke signIn value: {email_verified}")
+            except Exception as e:
+                print(f"[LOGIN] Error saat lookup: {e}")
+                email_verified = data.get("emailVerified", False)
 
             if not email_verified:
                 return render_template(
                     "login.html",
-                    error="Email Anda belum diverifikasi. Silakan cek inbox atau folder spam lalu klik link verifikasi. "
-                          "Jika tidak menerima email, klik tombol 'Kirim Ulang Verifikasi' di bawah.",
+                    error="Email Anda belum diverifikasi. Silakan cek inbox atau folder spam "
+                          "lalu klik link verifikasi. Jika tidak menerima email, "
+                          "klik tombol 'Kirim Ulang Verifikasi' di bawah.",
                     show_resend=True,
                     email_for_resend=email
                 )
@@ -463,12 +477,11 @@ def login():
         except requests.exceptions.RequestException:
             return render_template(
                 "login.html",
-                error="Gagal terhubung ke server autentikasi. Periksa koneksi internet Anda.",
+                error="Gagal terhubung ke server autentikasi.",
                 success=success_msg
             )
 
     return render_template("login.html", success=success_msg)
-
 
 @app.route("/resend-verification", methods=["POST"])
 def resend_verification():
