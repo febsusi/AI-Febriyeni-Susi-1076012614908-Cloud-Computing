@@ -1,28 +1,110 @@
 import os
+import json
 from datetime import datetime, timezone
+from functools import wraps
 
-import firebase_admin
-from firebase_admin import credentials, db
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+import requests
+from flask import (
+    Flask, jsonify, redirect, render_template, request, session, url_for
+)
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 app = Flask(__name__)
 
-SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT", "serviceAccountKey.json")
-DATABASE_URL = os.getenv(
-    "FIREBASE_DATABASE_URL",
-    "https://testing-d431b-default-rtdb.firebaseio.com/"
+app.secret_key = os.getenv(
+    "FLASK_SECRET_KEY"
 )
 
-if not firebase_admin._apps:
-    if not os.path.exists(SERVICE_ACCOUNT):
-        raise FileNotFoundError("Firebase service account file not found.")
-    cred = credentials.Certificate(SERVICE_ACCOUNT)
-    firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
+FIREBASE_DB_URL = os.getenv("FIREBASE_DATABASE_URL")
+FIREBASE_DB_SECRET = os.getenv("FIREBASE_DATABASE_SECRET")
+FIREBASE_API_KEY = os.getenv("FIREBASE_WEB_API_KEY")
+FIREBASE_AUTH_BASE_URL = "https://identitytoolkit.googleapis.com/v1/accounts:"
 
-reviews_ref = db.reference("ai_reviews")
+# Base URL untuk redirect setelah verifikasi email
+APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
+
+# Pastikan URL tidak berakhir dengan "/"
+if FIREBASE_DB_URL and FIREBASE_DB_URL.endswith("/"):
+    FIREBASE_DB_URL = FIREBASE_DB_URL[:-1]
+
+if not FIREBASE_DB_URL:
+    raise ValueError(
+        "FIREBASE_DATABASE_URL tidak di-set. "
+        "Tambahkan di environment variables."
+    )
+if not FIREBASE_DB_SECRET:
+    raise ValueError(
+        "FIREBASE_DATABASE_SECRET tidak di-set. "
+        "Dapatkan dari Firebase Console → Project Settings → Service Accounts → Database Secrets."
+    )
+
+print("Konfigurasi Firebase REST API siap")
+print(f"   Database URL: {FIREBASE_DB_URL}")
+
+
+def firebase_get(path):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_get({path}): {e}")
+        return None
+
+
+def firebase_set(path, data):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.put(url, json=data, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_set({path}): {e}")
+        return None
+
+
+def firebase_push(path, data):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.post(url, json=data, timeout=15)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("name") if isinstance(result, dict) else None
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_push({path}): {e}")
+        return None
+
+
+def firebase_update(path, data):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.patch(url, json=data, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_update({path}): {e}")
+        return None
+
+
+def firebase_delete(path):
+    url = f"{FIREBASE_DB_URL}/{path}.json?auth={FIREBASE_DB_SECRET}"
+    try:
+        response = requests.delete(url, timeout=15)
+        response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error firebase_delete({path}): {e}")
+        return False
+
 
 TRAIN_DATA = [
     ("aplikasinya sangat bagus dan mudah digunakan", "Positif"),
@@ -132,17 +214,16 @@ ai_model = Pipeline([
     )),
     ("classifier", LogisticRegression(
         max_iter=2000,
-        class_weight="balanced", 
+        class_weight="balanced",
         C=2.0,
         solver="lbfgs",
     ))
 ])
-
 ai_model.fit(TRAIN_TEXTS, TRAIN_LABELS)
+print("Model ML berhasil dilatih")
 
 
 def predict_sentiment(text):
-    """Prediksi sentimen dengan confidence + fallback rule-based untuk Netral."""
     if not text or not text.strip():
         return "Netral", 0.0
 
@@ -175,7 +256,7 @@ def predict_sentiment(text):
 
 
 def get_all_reviews():
-    data = reviews_ref.get() or {}
+    data = firebase_get("ai_reviews") or {}
     rows = []
     for review_id, item in data.items():
         if isinstance(item, dict):
@@ -186,7 +267,296 @@ def get_all_reviews():
     return rows
 
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "id_token" not in session:
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def firebase_sign_up(email, password):
+    url = f"{FIREBASE_AUTH_BASE_URL}signUp?key={FIREBASE_API_KEY}"
+    payload = {"email": email, "password": password, "returnSecureToken": True}
+    return requests.post(url, json=payload, timeout=15)
+
+
+def firebase_sign_in(email, password):
+    url = f"{FIREBASE_AUTH_BASE_URL}signInWithPassword?key={FIREBASE_API_KEY}"
+    payload = {"email": email, "password": password, "returnSecureToken": True}
+    return requests.post(url, json=payload, timeout=15)
+
+
+def firebase_update_profile(id_token, display_name):
+    url = f"{FIREBASE_AUTH_BASE_URL}update?key={FIREBASE_API_KEY}"
+    payload = {"idToken": id_token, "displayName": display_name, "returnSecureToken": True}
+    return requests.post(url, json=payload, timeout=15)
+
+
+def firebase_send_verification_email(id_token, continue_url=None):
+    url = f"{FIREBASE_AUTH_BASE_URL}sendOobCode?key={FIREBASE_API_KEY}"
+    payload = {
+        "requestType": "VERIFY_EMAIL",
+        "idToken": id_token
+    }
+    if continue_url:
+        payload["continueUrl"] = continue_url
+    return requests.post(url, json=payload, timeout=15)
+
+
+def firebase_lookup(id_token):
+    url = f"{FIREBASE_AUTH_BASE_URL}lookup?key={FIREBASE_API_KEY}"
+    payload = {"idToken": id_token}
+    return requests.post(url, json=payload, timeout=15)
+
+
+def translate_auth_error(msg):
+    """Terjemahkan error code Firebase ke pesan yang ramah."""
+    mapping = {
+        "EMAIL_NOT_FOUND": "Email tidak terdaftar. Silakan register terlebih dahulu.",
+        "INVALID_PASSWORD": "Password salah. Silakan periksa kembali.",
+        "INVALID_LOGIN_CREDENTIALS": "Email atau password salah.",
+        "INVALID_EMAIL": "Format email tidak valid.",
+        "EMAIL_EXISTS": "Email sudah terdaftar. Silakan login.",
+        "USER_DISABLED": "Akun ini dinonaktifkan.",
+        "TOO_MANY_ATTEMPTS_TRY_LATER": "Terlalu banyak percobaan. Coba lagi nanti.",
+        "WEAK_PASSWORD": "Password terlalu lemah. Gunakan minimal 6 karakter.",
+        "MISSING_EMAIL": "Email wajib diisi.",
+        "MISSING_PASSWORD": "Password wajib diisi.",
+        "OPERATION_NOT_ALLOWED": "Metode login ini belum diaktifkan.",
+        "INVALID_ID_TOKEN": "Sesi tidak valid. Silakan login ulang.",
+        "USER_NOT_FOUND": "Akun tidak ditemukan.",
+        "EXPIRED_OOB_CODE": "Link verifikasi sudah kedaluwarsa. Minta link baru.",
+        "INVALID_OOB_CODE": "Link verifikasi tidak valid atau sudah digunakan.",
+    }
+    return mapping.get(msg, f"Terjadi kesalahan: {msg}")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        if not name or not email or not password:
+            return render_template("register.html", error="Semua field wajib diisi.")
+        if password != confirm:
+            return render_template("register.html", error="Password dan konfirmasi tidak cocok.")
+        if len(password) < 6:
+            return render_template("register.html", error="Password minimal 6 karakter.")
+
+        try:
+            response = firebase_sign_up(email, password)
+            if response.status_code != 200:
+                msg = response.json().get("error", {}).get("message", "REGISTRATION_FAILED")
+                return render_template("register.html", error=translate_auth_error(msg))
+
+            data = response.json()
+            id_token = data["idToken"]
+            local_id = data["localId"]
+
+            firebase_set(f"users/{local_id}", {
+                "name": name,
+                "email": email,
+                "email_verified": False,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+
+            try:
+                firebase_update_profile(id_token, name)
+            except Exception:
+                pass
+
+            continue_url = f"{APP_BASE_URL}/login?verified=1" if APP_BASE_URL else None
+
+            try:
+                verify_resp = firebase_send_verification_email(id_token, continue_url)
+                if verify_resp.status_code != 200:
+                    err = verify_resp.json().get("error", {}).get("message", "SEND_EMAIL_FAILED")
+                    print(f"Gagal kirim email verifikasi: {err}")
+                    # Tetap lanjut, tapi kasih tahu user
+                    return render_template(
+                        "register.html",
+                        error=f"Akun dibuat, tetapi gagal mengirim email verifikasi: {translate_auth_error(err)}. "
+                              f"Silakan coba login lalu klik 'Kirim ulang verifikasi'."
+                    )
+            except requests.exceptions.RequestException as e:
+                print(f"Error koneksi saat kirim email: {e}")
+                return render_template(
+                    "register.html",
+                    error="Akun dibuat, tetapi gagal mengirim email verifikasi. "
+                          "Silakan coba login lalu klik 'Kirim ulang verifikasi'."
+                )
+
+
+            return render_template(
+                "login.html",
+                success=f"Akun berhasil dibuat! Kami telah mengirim link verifikasi ke {email}. "
+                        f"Silakan cek inbox (atau folder spam) Anda dan klik link tersebut sebelum login.",
+                show_resend=True,
+                email_for_resend=email
+            )
+
+        except requests.exceptions.RequestException:
+            return render_template("register.html", error="Gagal terhubung ke server autentikasi.")
+
+    return render_template("register.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    just_verified = request.args.get("verified") == "1"
+    success_msg = None
+    if just_verified:
+        success_msg = "Email Anda telah diverifikasi! Silakan login sekarang."
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+
+        if not email or not password:
+            return render_template(
+                "login.html",
+                error="Email dan password wajib diisi.",
+                success=success_msg
+            )
+
+        try:
+            response = firebase_sign_in(email, password)
+
+            if response.status_code != 200:
+                msg = response.json().get("error", {}).get("message", "LOGIN_FAILED")
+                friendly = translate_auth_error(msg)
+                return render_template(
+                    "login.html",
+                    error=friendly,
+                    success=success_msg
+                )
+
+            data = response.json()
+            local_id = data["localId"]
+            id_token = data["idToken"]
+            email_verified = data.get("emailVerified", False)
+
+            if not email_verified:
+                return render_template(
+                    "login.html",
+                    error="Email Anda belum diverifikasi. Silakan cek inbox dan klik link verifikasi. "
+                          "Jika tidak menerima email, klik tombol 'Kirim Ulang Verifikasi' di bawah.",
+                    show_resend=True,
+                    email_for_resend=email
+                )
+
+            profile = firebase_get(f"users/{local_id}") or {}
+            name = profile.get("name") or data.get("displayName") or email.split("@")[0]
+
+            if not profile.get("email_verified"):
+                firebase_update(f"users/{local_id}", {
+                    "email_verified": True,
+                    "verified_at": datetime.now(timezone.utc).isoformat()
+                })
+
+            session["id_token"] = id_token
+            session["local_id"] = local_id
+            session["email"] = data["email"]
+            session["name"] = name
+
+            return redirect(url_for("index"))
+
+        except requests.exceptions.RequestException:
+            return render_template(
+                "login.html",
+                error="Gagal terhubung ke server autentikasi. Periksa koneksi internet Anda.",
+                success=success_msg
+            )
+
+    return render_template("login.html", success=success_msg)
+
+
+@app.route("/resend-verification", methods=["POST"])
+def resend_verification():
+    email = request.form.get("email", "").strip()
+    password = request.form.get("password", "").strip()
+
+    if not email or not password:
+        return render_template(
+            "login.html",
+            error="Untuk mengirim ulang verifikasi, isi email dan password Anda.",
+            show_resend=True,
+            email_for_resend=email
+        )
+
+    try:
+        signin_resp = firebase_sign_in(email, password)
+        if signin_resp.status_code != 200:
+            msg = signin_resp.json().get("error", {}).get("message", "LOGIN_FAILED")
+            return render_template(
+                "login.html",
+                error=translate_auth_error(msg),
+                show_resend=True,
+                email_for_resend=email
+            )
+
+        data = signin_resp.json()
+        id_token = data["idToken"]
+
+        if data.get("emailVerified", False):
+            return render_template(
+                "login.html",
+                success="Email Anda sudah diverifikasi. Silakan login.",
+                email_for_resend=email
+            )
+
+        continue_url = f"{APP_BASE_URL}/login?verified=1" if APP_BASE_URL else None
+        resp = firebase_send_verification_email(id_token, continue_url)
+
+        if resp.status_code == 200:
+            return render_template(
+                "login.html",
+                success=f"Email verifikasi baru telah dikirim ke {email}. Silakan cek inbox Anda.",
+                show_resend=True,
+                email_for_resend=email
+            )
+        else:
+            err = resp.json().get("error", {}).get("message", "SEND_EMAIL_FAILED")
+            return render_template(
+                "login.html",
+                error=translate_auth_error(err),
+                show_resend=True,
+                email_for_resend=email
+            )
+
+    except requests.exceptions.RequestException:
+        return render_template(
+            "login.html",
+            error="Gagal terhubung ke server autentikasi.",
+            show_resend=True,
+            email_for_resend=email
+        )
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/profile")
+@login_required
+def profile():
+    return render_template(
+        "profile.html",
+        email=session.get("email"),
+        name=session.get("name"),
+        local_id=session.get("local_id"),
+    )
+
+
 @app.route("/")
+@login_required
 def index():
     reviews = get_all_reviews()
     counts = {
@@ -199,6 +569,7 @@ def index():
 
 
 @app.route("/create", methods=["POST"])
+@login_required
 def create():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip()
@@ -219,15 +590,17 @@ def create():
         "rating": int(rating),
         "sentiment": sentiment,
         "confidence": confidence,
+        "user_id": session.get("local_id"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    reviews_ref.push(record)
+    firebase_push("ai_reviews", record)
     return redirect(url_for("index"))
 
 
 @app.route("/edit/<review_id>")
+@login_required
 def edit(review_id):
-    item = reviews_ref.child(review_id).get()
+    item = firebase_get(f"ai_reviews/{review_id}")
     if not item:
         return redirect(url_for("index"))
     item["id"] = review_id
@@ -235,8 +608,9 @@ def edit(review_id):
 
 
 @app.route("/update/<review_id>", methods=["POST"])
+@login_required
 def update(review_id):
-    existing = reviews_ref.child(review_id).get()
+    existing = firebase_get(f"ai_reviews/{review_id}")
     if not existing:
         return redirect(url_for("index"))
 
@@ -262,13 +636,14 @@ def update(review_id):
         "created_at": existing.get("created_at", datetime.now(timezone.utc).isoformat()),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    reviews_ref.child(review_id).update(updated_record)
+    firebase_update(f"ai_reviews/{review_id}", updated_record)
     return redirect(url_for("index"))
 
 
 @app.route("/delete/<review_id>", methods=["POST"])
+@login_required
 def delete(review_id):
-    reviews_ref.child(review_id).delete()
+    firebase_delete(f"ai_reviews/{review_id}")
     return redirect(url_for("index"))
 
 
@@ -295,13 +670,13 @@ def api_create_review():
         "confidence": confidence,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    new_ref = reviews_ref.push(record)
-    return jsonify({"id": new_ref.key, **record}), 201
+    new_key = firebase_push("ai_reviews", record)
+    return jsonify({"id": new_key, **record}), 201
 
 
 @app.route("/api/reviews/<review_id>", methods=["PUT"])
 def api_update_review(review_id):
-    existing = reviews_ref.child(review_id).get()
+    existing = firebase_get(f"ai_reviews/{review_id}")
     if not existing:
         return jsonify({"error": "Review not found"}), 404
 
@@ -320,15 +695,15 @@ def api_update_review(review_id):
         "created_at": existing.get("created_at"),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    reviews_ref.child(review_id).update(updated)
+    firebase_update(f"ai_reviews/{review_id}", updated)
     return jsonify({"id": review_id, **updated})
 
 
 @app.route("/api/reviews/<review_id>", methods=["DELETE"])
 def api_delete_review(review_id):
-    reviews_ref.child(review_id).delete()
+    firebase_delete(f"ai_reviews/{review_id}")
     return jsonify({"message": "Deleted successfully"})
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", debug=False)
