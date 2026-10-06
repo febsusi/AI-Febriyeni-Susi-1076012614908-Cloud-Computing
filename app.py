@@ -438,7 +438,7 @@ def login():
             if not email_verified:
                 return render_template(
                     "login.html",
-                    error="Email Anda belum diverifikasi. Silakan cek inbox dan klik link verifikasi. "
+                    error="Email Anda belum diverifikasi. Silakan cek inbox atau folder spam lalu klik link verifikasi. "
                           "Jika tidak menerima email, klik tombol 'Kirim Ulang Verifikasi' di bawah.",
                     show_resend=True,
                     email_for_resend=email
