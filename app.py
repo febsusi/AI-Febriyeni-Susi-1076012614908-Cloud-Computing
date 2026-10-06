@@ -28,10 +28,8 @@ FIREBASE_DB_SECRET = os.getenv("FIREBASE_DATABASE_SECRET")
 FIREBASE_API_KEY = os.getenv("FIREBASE_WEB_API_KEY")
 FIREBASE_AUTH_BASE_URL = "https://identitytoolkit.googleapis.com/v1/accounts:"
 
-# Base URL untuk redirect setelah verifikasi email
 APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
 
-# Pastikan URL tidak berakhir dengan "/"
 if FIREBASE_DB_URL and FIREBASE_DB_URL.endswith("/"):
     FIREBASE_DB_URL = FIREBASE_DB_URL[:-1]
 
@@ -43,7 +41,6 @@ if not FIREBASE_DB_URL:
 if not FIREBASE_DB_SECRET:
     raise ValueError(
         "FIREBASE_DATABASE_SECRET tidak di-set. "
-        "Dapatkan dari Firebase Console → Project Settings → Service Accounts → Database Secrets."
     )
 
 print("Konfigurasi Firebase REST API siap")
@@ -393,10 +390,9 @@ def register():
 
 
             return render_template(
-                "login.html",
-                success=f"Akun berhasil dibuat! Kami telah mengirim link verifikasi ke {email}. "
-                        f"Silakan cek inbox (atau folder spam) Anda dan klik link tersebut sebelum login.",
-                show_resend=True,
+                "register.html",
+                verification_pending=True,
+                success=f"Akun berhasil dibuat! Link verifikasi telah dikirim ke {email}.",
                 email_for_resend=email
             )
 
@@ -480,13 +476,18 @@ def login():
 def resend_verification():
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "").strip()
+    from_register = request.form.get("from_register") == "1"
+
+    # Tentukan template tujuan
+    target_template = "register.html" if from_register else "login.html"
+    extra_ctx = {"verification_pending": True} if from_register else {"show_resend": True}
 
     if not email or not password:
         return render_template(
-            "login.html",
+            target_template,
             error="Untuk mengirim ulang verifikasi, isi email dan password Anda.",
-            show_resend=True,
-            email_for_resend=email
+            email_for_resend=email,
+            **extra_ctx
         )
 
     try:
@@ -494,15 +495,16 @@ def resend_verification():
         if signin_resp.status_code != 200:
             msg = signin_resp.json().get("error", {}).get("message", "LOGIN_FAILED")
             return render_template(
-                "login.html",
+                target_template,
                 error=translate_auth_error(msg),
-                show_resend=True,
-                email_for_resend=email
+                email_for_resend=email,
+                **extra_ctx
             )
 
         data = signin_resp.json()
         id_token = data["idToken"]
 
+        # Cek apakah sudah verified
         if data.get("emailVerified", False):
             return render_template(
                 "login.html",
@@ -510,31 +512,32 @@ def resend_verification():
                 email_for_resend=email
             )
 
+        # Kirim ulang email verifikasi
         continue_url = f"{APP_BASE_URL}/login?verified=1" if APP_BASE_URL else None
         resp = firebase_send_verification_email(id_token, continue_url)
 
         if resp.status_code == 200:
             return render_template(
-                "login.html",
-                success=f"Email verifikasi baru telah dikirim ke {email}. Silakan cek inbox Anda.",
-                show_resend=True,
-                email_for_resend=email
+                target_template,
+                success=f"Email verifikasi baru telah dikirim ke {email}.",
+                email_for_resend=email,
+                **extra_ctx
             )
         else:
             err = resp.json().get("error", {}).get("message", "SEND_EMAIL_FAILED")
             return render_template(
-                "login.html",
+                target_template,
                 error=translate_auth_error(err),
-                show_resend=True,
-                email_for_resend=email
+                email_for_resend=email,
+                **extra_ctx
             )
 
     except requests.exceptions.RequestException:
         return render_template(
-            "login.html",
+            target_template,
             error="Gagal terhubung ke server autentikasi.",
-            show_resend=True,
-            email_for_resend=email
+            email_for_resend=email,
+            **extra_ctx
         )
 
 
